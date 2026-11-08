@@ -1,0 +1,113 @@
+PHẦN 1: QUY TRÌNH DỰ ÁN ĐƯỢC TẠO RA (TỪ ĐÂU TỚI ĐÂU)
+
+Dự án được xây dựng theo kiến trúc phân tầng chuẩn gồm 4 bước từ dưới lên:
+
+[1. Thiết kế CSDL & Model] ➔ [2. Tầng xử lý dữ liệu (CRUD/Query)] ➔ [3. Tầng Giao diện (Jetpack Compose)] ➔ [4. Tích hợp Activity]
+
+Bước 1: Định nghĩa Model và Thiết kế CSDL (SQLite)
+- Tạo 2 Data Class mô hình hoá dữ liệu: FoodCategory (Loại món) và Dish (Món ăn).
+- Tạo cơ sở dữ liệu menu.db kế thừa SQLiteOpenHelper (version 3):
+  + Bảng categories: code (Khóa chính), name, description.
+  + Bảng dishes: code (Khóa chính), name, image, price, service_minutes, category_code (Khóa ngoại trỏ về categories.code).
+  + Ràng buộc toàn vẹn: price >= 0, service_minutes > 0, và ON DELETE CASCADE (xóa loại thì tất cả món thuộc loại tự động bị xóa theo).
+
+Bước 2: Viết các hàm nghiệp vụ CSDL (DAO / Database Helper)
+- Viết các hàm CRUD (Thêm - Đọc - Sửa - Xóa) cho cả 2 bảng.
+- Viết hàm kiểm tra trùng mã trước khi thêm: MaMonAnDaTonTai(), MaLoaiMonDaTonTai().
+- Viết hàm truy vấn đa điều kiện linh hoạt TimMonAn(): hỗ trợ tìm kiếm từ khóa (LIKE theo mã/tên), lọc theo loại món, lọc theo khoảng giá (giaTu, giaDen) và lọc theo thời gian phục vụ (phutTu, phutDen) độc lập hoặc kết hợp đồng thời.
+
+Bước 3: Xây dựng giao diện người dùng (Jetpack Compose UI)
+- Sử dụng hoàn toàn Jetpack Compose (Declarative UI hiện đại của Google, không dùng XML layout).
+- Xây dựng Component cha ManHinhQuanLyThucDon quản lý State (trạng thái):
+  + Thanh Banner Gradient ẩm thực hiện đại (cam - vàng) hiển thị tên dự án và thông tin sinh viên.
+  + Thanh chuyển đổi Tab dạng Segmented Pill (Món ăn / Loại món).
+  + Thanh tìm kiếm và hàng chọn loại món cuộn ngang.
+  + Hàng bộ lọc nâng cao tinh gọn trên 1 dòng duy nhất với 2 menu Dropdown (Giá và Thời gian) và nút "Bỏ lọc".
+  + Các Sub-component: Thẻ món ăn (TheMonAn), Thẻ loại món (TheLoaiMonAn), Hộp thoại nhập liệu (BieuMauMonAn, BieuMauLoaiMonAn).
+  + Cơ chế chọn và tải ảnh từ máy lên (Image Picker) với tự động nén ảnh.
+
+Bước 4: Kết nối với Activity chính
+- Trong MainActivity.kt: Khởi tạo đối tượng MenuDatabase, áp dụng GoiMonAnTheme với tông màu cam ẩm thực (#E65100), truyền database vào ManHinhQuanLyThucDon(), và đóng kết nối database.close() ở onDestroy() để giải phóng tài nguyên.
+
+--------------------------------------------------
+PHẦN 2: CÁC THÀNH PHẦN TRONG CODE & VIEW
+
+1. File MenuDatabase.kt (Tầng Dữ liệu)
+- Model Class:
+  + FoodCategory(code, name, description)
+  + Dish(code, name, image, price, serviceMinutes, categoryCode)
+- Lớp MenuDatabase (kế thừa SQLiteOpenHelper, version 3):
+  + onConfigure(): Kích hoạt ràng buộc khóa ngoại với db.setForeignKeyConstraintsEnabled(true).
+  + onCreate(): Tạo 2 bảng categories và dishes, thêm dữ liệu mẫu ban đầu.
+  + onUpgrade(): Nâng cấp schema và tự động bổ sung 5 món ăn mẫu mới khi lên version 3.
+  + truyVanMonAn(): Hàm truy vấn dùng tham số '?' chống SQL Injection, sinh câu lệnh WHERE động theo các bộ lọc giá, thời gian, từ khóa, loại món.
+
+2. File MenuScreen.kt (Tầng Giao diện)
+- Quản lý State (Trạng thái giao diện):
+  + tab: 0 là Tab Món ăn, 1 là Tab Loại món.
+  + refresh: Số nguyên đếm; mỗi khi thêm/sửa/xóa thành công thì refresh++ để kích hoạt Compose đọc lại dữ liệu mới nhất từ SQLite.
+  + search: Từ khóa tìm kiếm mã hoặc tên món.
+  + selectedCategory: Mã loại món đang được lọc (null là hiển thị tất cả).
+  + priceFilter: Mức lọc giá (0: Tất cả, 1: Dưới 100k, 2: 100k–200k, 3: Trên 200k).
+  + timeFilter: Mức lọc thời gian phục vụ (0: Mọi lúc, 1: Dưới 10 phút, 2: 10–15 phút, 3: Trên 15 phút).
+  + isFiltering: Biến boolean xác định có đang lọc hay không để tự động hiển thị nút "✕ Bỏ lọc".
+- Các Composable và Hàm giao diện chính:
+  + ManHinhQuanLyThucDon: Màn hình chính bao quát toàn bộ luồng giao diện.
+  + TheMonAn: Thẻ món ăn phong cách Food App hiện đại: ảnh bo góc 12dp, tag mã + loại món, thời gian phục vụ icon ⏱️, giá format %,d đ đậm màu cam, nút Sửa (xanh pastel) và Xóa (đỏ pastel).
+  + TheLoaiMonAn: Thẻ loại món với badge mã loại, mô tả, nút xem món thuộc loại, nút Sửa/Xóa.
+  + DropdownFilterPill: Nút lọc dạng menu thả xuống nhỏ gọn (cho Giá và Thời gian), đổi màu cam nổi bật khi đang kích hoạt.
+  + PillLoaiMon: Nút lọc danh mục món dạng viên thuốc cuộn ngang.
+  + AnhMon: Hiển thị linh hoạt ảnh: nếu là ảnh tải từ máy (tiền tố "file:") thì decode từ File bộ nhớ trong; nếu là ảnh mẫu thì load vector/drawable sắc nét từ res/drawable-nodpi/.
+  + luuAnhTuMay: Đọc URI từ thư viện ảnh máy, tính toán inSampleSize để nén kích thước chống tràn RAM (OOM), lưu file JPG vào context.filesDir và trả về đường dẫn "file:...".
+  + BieuMauMonAn & BieuMauLoaiMonAn: Hộp thoại nhập liệu có nút "Tải ảnh từ máy", chọn ảnh mẫu, validate dữ liệu (giá >= 0, phút > 0).
+
+--------------------------------------------------
+PHẦN 3: BẢNG CÁC HÀM CHÍNH CẦN NHỚ
+
+Tên Hàm | Vị trí | Mục đích / Chức năng
+--- | --- | ---
+LayLoaiMonAn() | MenuDatabase | Lấy danh sách toàn bộ loại món, sắp xếp A-Z theo tên.
+LayMonAn(maLoai) | MenuDatabase | Lấy danh sách món ăn, hỗ trợ lọc theo mã loại món.
+TimMonAn(tuKhoa, maLoai, giaTu, giaDen, phutTu, phutDen) | MenuDatabase | Tìm kiếm và lọc đa điều kiện: từ khóa, loại món, khoảng giá, khoảng thời gian phục vụ.
+truyVanMonAn(...) | MenuDatabase | Hàm cốt lõi tạo câu lệnh SQL với mệnh đề WHERE động và dùng tham số '?' chống SQL Injection.
+ThemMonAn(), SuaMonAn(), XoaMonAn() | MenuDatabase | Thao tác CRUD bảng món ăn (insertOrThrow, update, delete).
+ThemLoaiMonAn(), SuaLoaiMonAn(), XoaLoaiMonAn() | MenuDatabase | Thao tác CRUD bảng loại món.
+MaMonAnDaTonTai(), MaLoaiMonDaTonTai() | MenuDatabase | Kiểm tra xem mã đã tồn tại trong DB chưa trước khi thêm (tránh lỗi khóa chính).
+luuAnhTuMay(context, uri) | MenuScreen | Lấy ảnh từ máy, nén lại (downsample) và lưu vào bộ nhớ trong của ứng dụng.
+AnhMon(image, modifier) | MenuScreen | Hiển thị ảnh món ăn (tự động phân biệt ảnh file máy người dùng hay ảnh mẫu drawable).
+
+--------------------------------------------------
+PHẦN 4: 6 CÂU HỎI VẤN ĐÁP THẦY CÔ HAY HỎI NHẤT & CÁCH TRẢ LỜI
+
+Câu 1: Em dùng công nghệ gì để làm giao diện? Khác gì giao diện XML thông thường?
+Trả lời: Em sử dụng Jetpack Compose kết hợp Material 3.
+Điểm khác biệt: Compose là Declarative UI (giao diện khai báo theo trạng thái). Thay vì dùng file XML rồi gọi findViewById hay ViewBinding, toàn bộ giao diện viết bằng Kotlin. Khi các biến State (như priceFilter, timeFilter, search, refresh) thay đổi, Compose sẽ tự động vẽ lại các thành phần liên quan (Recomposition).
+
+Câu 2: Khi xóa một Loại món thì các Món ăn thuộc loại đó sẽ như thế nào? Em cài đặt ra sao?
+Trả lời:
+- Trong CSDL SQLite, em cài đặt khóa ngoại với thuộc tính ON DELETE CASCADE:
+  FOREIGN KEY(category_code) REFERENCES categories(code) ON DELETE CASCADE
+- Trong onConfigure(), em gọi db.setForeignKeyConstraintsEnabled(true) vì SQLite trên Android mặc định tắt kiểm tra khóa ngoại.
+- Về trải nghiệm người dùng, trước khi xóa, ứng dụng đếm số món ăn thuộc loại này và hiển thị hộp thoại cảnh báo: "Xóa loại X sẽ xóa kèm Y món ăn thuộc loại này. Bạn có chắc chắn?" để người dùng xác nhận.
+
+Câu 3: Làm thế nào ứng dụng của em chống được lỗi SQL Injection?
+Trả lời: Em không dùng phép cộng chuỗi thô khi tạo câu lệnh SQL. Trong hàm truyVanMonAn(), tất cả dữ liệu người dùng nhập hoặc chọn (từ khóa tìm kiếm, mã loại, giá từ, giá đến, thời gian...) đều được đưa vào danh sách đối số arguments và truyền qua dấu hỏi chấm '?' vào phương thức readableDatabase.query().
+
+Câu 4: Chức năng lọc theo giá và thời gian phục vụ được xử lý như thế nào trong CSDL?
+Trả lời:
+- Người dùng có thể chọn lọc theo Giá (Dưới 100k, 100k–200k, Trên 200k) và Thời gian (Dưới 10p, 10–15p, Trên 15p) hoàn toàn độc lập hoặc kết hợp cả hai.
+- Khi người dùng chọn, hàm TimMonAn() sẽ truyền các mốc giá và thời gian vào hàm truyVanMonAn(). Tại đây, câu lệnh SQL sẽ tự động ghép thêm các điều kiện:
+  + Nếu có mốc giá: conditions += "price >= ?" hoặc "price <= ?"
+  + Nếu có mốc thời gian: conditions += "service_minutes >= ?" hoặc "service_minutes <= ?"
+  Ví dụ khi lọc giá 100k-200k và thời gian dưới 15 phút, câu SQL tương ứng là:
+  SELECT * FROM dishes WHERE price >= 100000 AND price <= 200000 AND service_minutes <= 15 ORDER BY name COLLATE NOCASE ASC;
+
+Câu 5: Khi thêm mới hoặc sửa dữ liệu, làm sao giao diện cập nhật ngay lập tức?
+Trả lời: Em dùng biến state var refresh by remember { mutableIntStateOf(0) }. Danh sách dishes và categories được bọc trong remember(..., refresh) { database.Lay...() }. Mỗi khi thêm/sửa/xóa xong, em tăng refresh++. Compose phát hiện refresh đổi giá trị nên sẽ tự động gọi lại hàm đọc dữ liệu từ SQLite và cập nhật danh sách hiển thị ngay lập tức.
+
+Câu 6: Chức năng tải ảnh từ máy lên hoạt động như thế nào và lưu ở đâu?
+Trả lời:
+- Em dùng rememberLauncherForActivityResult với hợp đồng ActivityResultContracts.GetContent() để cho phép người dùng chọn ảnh từ thư viện thiết bị.
+- Khi nhận được Uri của ảnh, hàm luuAnhTuMay() mở InputStream, đọc kích thước ảnh và dùng inSampleSize để nén tỷ lệ (tránh lỗi Out-Of-Memory khi ảnh quá lớn), sau đó nén ảnh dưới định dạng JPEG 88% và ghi vào thư mục nội bộ an toàn của ứng dụng (context.filesDir).
+- Đường dẫn file dạng "file:/data/user/0/.../dish_123.jpg" được lưu vào cột image của bảng dishes trong SQLite.
+- Khi hiển thị, hàm AnhMon() kiểm tra nếu chuỗi bắt đầu bằng "file:" thì dùng BitmapFactory.decodeFile() để nạp Bitmap, nếu là tên ảnh mẫu thì dùng painterResource() lấy từ thư mục drawable.

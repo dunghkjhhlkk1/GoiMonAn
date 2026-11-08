@@ -1,0 +1,233 @@
+package com.goimonan
+
+import android.os.Bundle
+import android.content.Context
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.goimonan.ui.theme.GoiMonAnTheme
+
+private const val STUDENT = "K24DTCN008 - Đào Xuân Dũng"
+
+class MainActivity : ComponentActivity() {
+    private lateinit var database: EmployeeDatabase
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        database = EmployeeDatabase(this)
+        setContent {
+            GoiMonAnTheme {
+                EmployeeManager(database)
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        if (::database.isInitialized) database.close()
+        super.onDestroy()
+    }
+}
+
+@Composable
+private fun EmployeeManager(database: EmployeeDatabase) {
+    val context = LocalContext.current
+    var search by remember { mutableStateOf("") }
+    var salaryOrder by remember { mutableIntStateOf(0) }
+    var refresh by remember { mutableIntStateOf(0) }
+    var editing by remember { mutableStateOf<Employee?>(null) }
+    var showForm by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf<Employee?>(null) }
+    val employees = remember(search, salaryOrder, refresh) { database.getEmployees(search.trim(), salaryOrder) }
+    val listState = rememberLazyListState()
+    LaunchedEffect(search, salaryOrder) { listState.scrollToItem(0) }
+
+    Scaffold(
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = { editing = null; showForm = true },
+                icon = { Text("+", fontSize = 22.sp, fontWeight = FontWeight.Bold) },
+                text = { Text("Thêm nhân sự") }
+            )
+        }
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp, vertical = 10.dp)) {
+            Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                Text(STUDENT, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp), fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+            }
+            Text("QUẢN LÝ NHÂN SỰ", fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
+            OutlinedTextField(
+                value = search, onValueChange = { search = it }, modifier = Modifier.fillMaxWidth(), singleLine = true,
+                label = { Text("Tìm mã, tên, quê quán, phòng ban") },
+                trailingIcon = { if (search.isNotEmpty()) TextButton(onClick = { search = "" }) { Text("Xóa") } }
+            )
+            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("${employees.size} nhân sự", fontWeight = FontWeight.Medium)
+                TextButton(onClick = { salaryOrder = (salaryOrder + 1) % 3 }) {
+                    Text(when (salaryOrder) { 1 -> "Lương: thấp → cao"; 2 -> "Lương: cao → thấp"; else -> "Sắp xếp lương" })
+                }
+            }
+            if (employees.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Không tìm thấy nhân sự") }
+            } else {
+                LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 88.dp)) {
+                    items(employees, key = { it.code }) { employee ->
+                        EmployeeCard(employee, onEdit = { editing = employee; showForm = true }, onDelete = { deleting = employee })
+                    }
+                }
+            }
+        }
+    }
+
+    if (showForm) {
+        EmployeeFormDialog(
+            initial = editing,
+            onDismiss = { showForm = false },
+            onSave = { employee ->
+                try {
+                    if (editing == null) {
+                        if (database.hasCode(employee.code)) throw IllegalArgumentException("Mã nhân sự đã tồn tại")
+                        database.addEmployee(employee)
+                        Toast.makeText(context, "Đã thêm ${employee.fullName}", Toast.LENGTH_SHORT).show()
+                    } else {
+                        database.updateEmployee(employee)
+                        Toast.makeText(context, "Đã cập nhật ${employee.fullName}", Toast.LENGTH_SHORT).show()
+                    }
+                    refresh++
+                    showForm = false
+                } catch (_: Exception) {
+                    Toast.makeText(context, "Không lưu được. Kiểm tra mã và dữ liệu.", Toast.LENGTH_LONG).show()
+                }
+            }
+        )
+    }
+
+    deleting?.let { employee ->
+        AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text("Xóa nhân sự") },
+            text = { Text("Bạn có chắc muốn xóa ${employee.fullName} (${employee.code}) không?") },
+            confirmButton = { TextButton(onClick = { database.deleteEmployee(employee.code); refresh++; deleting = null; Toast.makeText(context, "Đã xóa nhân sự", Toast.LENGTH_SHORT).show() }) { Text("Xóa") } },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Hủy") } }
+        )
+    }
+}
+
+@Composable
+private fun EmployeeCard(employee: Employee, onEdit: () -> Unit, onDelete: () -> Unit) {
+    val context = LocalContext.current
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
+        Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Image(painterResource(avatarResource(context, employee.image)), "Ảnh ${employee.fullName}", Modifier.size(62.dp))
+            Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
+                Text(employee.fullName, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text("${employee.code} • ${employee.birthYear} • ${employee.gender}", fontSize = 12.sp)
+                Text("${employee.hometown} • ${employee.education}", fontSize = 12.sp)
+                Text("${employee.department} • ${"%,d".format(employee.salary)} đ", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                TextButton(onClick = onEdit, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) { Text("Sửa") }
+                TextButton(onClick = onDelete, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) { Text("Xóa", color = MaterialTheme.colorScheme.error) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmployeeFormDialog(initial: Employee?, onDismiss: () -> Unit, onSave: (Employee) -> Unit) {
+    var code by remember { mutableStateOf(initial?.code ?: "") }
+    var name by remember { mutableStateOf(initial?.fullName ?: "") }
+    var year by remember { mutableStateOf(initial?.birthYear?.toString() ?: "2004") }
+    var gender by remember { mutableStateOf(initial?.gender ?: "Nam") }
+    var hometown by remember { mutableStateOf(initial?.hometown ?: "") }
+    var education by remember { mutableStateOf(initial?.education ?: "Đại học") }
+    var salary by remember { mutableStateOf(initial?.salary?.toString() ?: "15000000") }
+    var image by remember { mutableStateOf(initial?.image ?: "avatar_dung") }
+    var department by remember { mutableStateOf(initial?.department ?: "Phần mềm") }
+    var error by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (initial == null) "Thêm nhân sự" else "Sửa nhân sự") },
+        text = {
+            Column(Modifier.heightIn(max = 540.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(STUDENT, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                FormField("Mã nhân sự", code, { code = it }, initial != null)
+                FormField("Họ và tên", name, { name = it })
+                val context = LocalContext.current
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Image(painterResource(avatarResource(context, image)), "Ảnh đại diện được chọn", Modifier.size(52.dp))
+                    ChoiceField("Ảnh đại diện", avatarLabels[image] ?: "Đào Xuân Dũng", avatarLabels.values.toList(), modifier = Modifier.weight(1f)) { label ->
+                        image = avatarLabels.entries.firstOrNull { it.value == label }?.key ?: image
+                    }
+                }
+                FormField("Năm sinh", year, { year = it }, keyboard = KeyboardType.Number)
+                ChoiceField("Giới tính", gender, listOf("Nam", "Nữ", "Khác")) { gender = it }
+                FormField("Quê quán", hometown, { hometown = it })
+                ChoiceField("Trình độ", education, listOf("Trung học phổ thông", "Trung cấp", "Cao đẳng", "Đại học", "Thạc sĩ", "Tiến sĩ")) { education = it }
+                FormField("Mức lương (VNĐ/tháng)", salary, { salary = it }, keyboard = KeyboardType.Number)
+                ChoiceField("Phòng ban", department, listOf("Hành chính", "Phần mềm", "Kỹ thuật", "Dự án")) { department = it }
+                if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                val birthYear = year.toIntOrNull()
+                val salaryValue = salary.toLongOrNull()
+                if (code.isBlank() || name.isBlank() || hometown.isBlank() || birthYear == null || salaryValue == null || salaryValue < 0) {
+                    error = "Nhập đầy đủ thông tin; năm sinh và lương phải là số hợp lệ."
+                } else {
+                    onSave(Employee(code.trim(), name.trim(), birthYear, gender, hometown.trim(), education, image, salaryValue, department))
+                }
+            }) { Text("Lưu") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Hủy") } }
+    )
+}
+
+private val avatarLabels = linkedMapOf(
+    "avatar_dung" to "Đào Xuân Dũng",
+    "avatar_anh" to "Nguyễn Minh Anh",
+    "avatar_bao" to "Trần Gia Bảo",
+    "avatar_nam" to "Lê Hoàng Nam",
+    "avatar_ha" to "Phạm Thu Hà",
+    "avatar_huy" to "Lê Quang Huy"
+)
+
+private fun avatarResource(context: Context, image: String): Int =
+    context.resources.getIdentifier(image.substringBeforeLast('.'), "drawable", context.packageName)
+        .takeIf { it != 0 } ?: R.drawable.anhcanhan
+
+@Composable
+private fun FormField(label: String, value: String, onValueChange: (String) -> Unit, readOnly: Boolean = false, keyboard: KeyboardType = KeyboardType.Text) {
+    OutlinedTextField(value, onValueChange, label = { Text(label) }, modifier = Modifier.fillMaxWidth(), singleLine = true, readOnly = readOnly, keyboardOptions = KeyboardOptions(keyboardType = keyboard))
+}
+
+@Composable
+private fun ChoiceField(label: String, selected: String, choices: List<String>, modifier: Modifier = Modifier, onSelected: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box(modifier) {
+        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) { Text("$label: $selected") }
+        DropdownMenu(expanded, onDismissRequest = { expanded = false }, modifier = Modifier.heightIn(max = 280.dp)) {
+            choices.forEach { choice -> DropdownMenuItem(text = { Text(choice) }, onClick = { onSelected(choice); expanded = false }) }
+        }
+    }
+}

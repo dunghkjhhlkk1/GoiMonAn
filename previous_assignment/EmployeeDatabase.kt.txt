@@ -1,0 +1,97 @@
+package com.goimonan
+
+import android.content.ContentValues
+import android.content.Context
+import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteOpenHelper
+
+data class Employee(
+    val code: String,
+    val fullName: String,
+    val birthYear: Int,
+    val gender: String,
+    val hometown: String,
+    val education: String,
+    val image: String,
+    val salary: Long,
+    val department: String
+)
+
+class EmployeeDatabase(context: Context) : SQLiteOpenHelper(context, "employees.db", null, 2) {
+    override fun onCreate(db: SQLiteDatabase) {
+        db.execSQL("""CREATE TABLE employees (
+            code TEXT PRIMARY KEY NOT NULL,
+            full_name TEXT NOT NULL,
+            birth_year INTEGER NOT NULL,
+            gender TEXT NOT NULL,
+            hometown TEXT NOT NULL,
+            education TEXT NOT NULL,
+            image TEXT NOT NULL,
+            salary INTEGER NOT NULL,
+            department TEXT NOT NULL
+        )""".trimIndent())
+        val examples = listOf(
+            Employee("NS001", "Đào Xuân Dũng", 2004, "Nam", "Hà Nội", "Đại học", "avatar_dung", 15000000, "Phần mềm"),
+            Employee("NS002", "Nguyễn Minh Anh", 2003, "Nữ", "Hải Phòng", "Đại học", "avatar_anh", 18000000, "Dự án"),
+            Employee("NS003", "Trần Gia Bảo", 2002, "Nam", "Nam Định", "Cao đẳng", "avatar_bao", 12500000, "Kỹ thuật"),
+            Employee("NS004", "Lê Hoàng Nam", 2001, "Nam", "Bắc Ninh", "Đại học", "avatar_nam", 22000000, "Hành chính"),
+            Employee("NS005", "Phạm Thu Hà", 2004, "Nữ", "Thái Bình", "Thạc sĩ", "avatar_ha", 16500000, "Phần mềm")
+        )
+        examples.forEach { insert(db, it) }
+    }
+
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        val avatars = mapOf("NS001" to "avatar_dung", "NS002" to "avatar_anh", "NS003" to "avatar_bao", "NS004" to "avatar_nam", "NS005" to "avatar_ha")
+        avatars.forEach { (code, image) ->
+            db.update("employees", ContentValues().apply { put("image", image) }, "code = ?", arrayOf(code))
+        }
+    }
+
+    fun getEmployees(query: String = "", salaryOrder: Int = 0): List<Employee> {
+        val result = mutableListOf<Employee>()
+        val cursor = readableDatabase.query(
+            "employees", null,
+            "code LIKE ? OR full_name LIKE ? OR hometown LIKE ? OR department LIKE ?",
+            Array(4) { "%$query%" }, null, null,
+            when (salaryOrder) { 1 -> "salary ASC"; 2 -> "salary DESC"; else -> "full_name COLLATE NOCASE ASC" }
+        )
+        cursor.use {
+            while (it.moveToNext()) result += Employee(
+                it.getString(it.getColumnIndexOrThrow("code")),
+                it.getString(it.getColumnIndexOrThrow("full_name")),
+                it.getInt(it.getColumnIndexOrThrow("birth_year")),
+                it.getString(it.getColumnIndexOrThrow("gender")),
+                it.getString(it.getColumnIndexOrThrow("hometown")),
+                it.getString(it.getColumnIndexOrThrow("education")),
+                it.getString(it.getColumnIndexOrThrow("image")),
+                it.getLong(it.getColumnIndexOrThrow("salary")),
+                it.getString(it.getColumnIndexOrThrow("department"))
+            )
+        }
+        return result
+    }
+
+    fun addEmployee(employee: Employee) = insert(writableDatabase, employee)
+
+    fun updateEmployee(employee: Employee) {
+        writableDatabase.update("employees", employee.toValues(), "code = ?", arrayOf(employee.code))
+    }
+
+    fun deleteEmployee(code: String) {
+        writableDatabase.delete("employees", "code = ?", arrayOf(code))
+    }
+
+    fun hasCode(code: String): Boolean = readableDatabase.rawQuery(
+        "SELECT 1 FROM employees WHERE code = ?", arrayOf(code)
+    ).use { it.moveToFirst() }
+
+    private fun insert(db: SQLiteDatabase, employee: Employee) {
+        db.insertOrThrow("employees", null, employee.toValues())
+    }
+
+    private fun Employee.toValues() = ContentValues().apply {
+        put("code", code); put("full_name", fullName); put("birth_year", birthYear)
+        put("gender", gender); put("hometown", hometown); put("education", education)
+        put("image", image); put("salary", salary); put("department", department)
+    }
+}

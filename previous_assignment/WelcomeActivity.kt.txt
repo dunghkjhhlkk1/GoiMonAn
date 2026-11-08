@@ -1,0 +1,48 @@
+package com.goimonan
+
+import android.os.Bundle
+import android.widget.ArrayAdapter
+import android.widget.ListView
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import com.goimonan.ui.theme.GoiMonAnTheme
+
+class WelcomeActivity : ComponentActivity() {
+    companion object { const val EXTRA_USERNAME = "userName" }
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val userName = intent.getStringExtra(EXTRA_USERNAME) ?: "Sinh viên"
+        setContent {
+            GoiMonAnTheme {
+                val context = LocalContext.current
+                Scaffold { padding ->
+                    Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Image(painterResource(R.drawable.welcome_portrait), "Ảnh sinh viên Đào Xuân Dũng", Modifier.size(120.dp))
+                        Text("Xin chào: $userName", fontSize = 24.sp, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp, bottom = 6.dp))
+                        Text("Danh sách bạn bè", fontSize = 20.sp, modifier = Modifier.padding(bottom = 8.dp))
+                        AndroidView(modifier = Modifier.fillMaxWidth().weight(1f), factory = { ctx ->
+                            val friends = listOf("K24DTCN008 - Đào Xuân Dũng", "K24DTCN001 - Nguyễn Minh Anh", "K24DTCN015 - Trần Gia Bảo", "K24DTCN022 - Lê Hoàng Nam", "K24DTCN031 - Phạm Thu Hà")
+                            ListView(ctx).apply {
+                                adapter = ArrayAdapter(ctx, android.R.layout.simple_list_item_1, friends)
+                                setOnItemClickListener { _, _, position, _ -> Toast.makeText(context, "Xin chào bạn: ${friends[position].substringAfter(" - ")}", Toast.LENGTH_SHORT).show() }
+                            }
+                        })
+                    }
+                }
+            }
+        }
+    }
+}
