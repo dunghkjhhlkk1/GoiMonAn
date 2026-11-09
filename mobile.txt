@@ -59,7 +59,7 @@ PHẦN 2: CÁC THÀNH PHẦN TRONG CODE & VIEW
   + PillLoaiMon: Nút lọc danh mục món dạng viên thuốc cuộn ngang.
   + AnhMon: Hiển thị linh hoạt ảnh: nếu là ảnh tải từ máy (tiền tố "file:") thì decode từ File bộ nhớ trong; nếu là ảnh mẫu thì load vector/drawable sắc nét từ res/drawable-nodpi/.
   + luuAnhTuMay: Đọc URI từ thư viện ảnh máy, tính toán inSampleSize để nén kích thước chống tràn RAM (OOM), lưu file JPG vào context.filesDir và trả về đường dẫn "file:...".
-  + BieuMauMonAn & BieuMauLoaiMonAn: Hộp thoại nhập liệu có nút "Tải ảnh từ máy", chọn ảnh mẫu, validate dữ liệu (giá >= 0, phút > 0).
+  + BieuMauMonAn & BieuMauLoaiMonAn: Hộp thoại nhập liệu chỉ cho phép tải ảnh trực tiếp từ thiết bị máy lên (đã bỏ chọn ảnh mẫu), validate dữ liệu (bắt buộc tải ảnh, giá >= 0, phút > 0).
 
 --------------------------------------------------
 PHẦN 3: BẢNG CÁC HÀM CHÍNH CẦN NHỚ

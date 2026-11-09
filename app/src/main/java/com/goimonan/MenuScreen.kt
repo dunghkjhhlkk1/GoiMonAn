@@ -40,20 +40,6 @@ import java.io.File
 
 private const val STUDENT = "K24DTCN008 - Đào Xuân Dũng"
 
-private val imageChoices = linkedMapOf(
-    "dish_pho" to "Phở bò",
-    "dish_bun_bo" to "Bún bò Huế",
-    "dish_com_tam" to "Cơm tấm",
-    "dish_com_ga" to "Cơm gà",
-    "dish_goi_cuon" to "Gỏi cuốn",
-    "dish_tra_dao" to "Trà đào",
-    "dish_bun_rieu" to "Bún riêu cua",
-    "dish_com_chien" to "Cơm chiên hải sản",
-    "dish_bo_luc_lac" to "Bò lúc lắc",
-    "dish_nem_cuon" to "Nem cuốn",
-    "dish_sinh_to_xoai" to "Sinh tố xoài"
-)
-
 private class Range(val label: String, val from: Long?, val to: Long?)
 
 private val priceRanges = listOf(
@@ -801,7 +787,7 @@ private fun BieuMauLoaiMonAn(initial: FoodCategory?, onDismiss: () -> Unit, onSa
 private fun BieuMauMonAn(initial: Dish?, categories: List<FoodCategory>, onDismiss: () -> Unit, onSave: (Dish) -> Unit) {
     var code by remember(initial) { mutableStateOf(initial?.code ?: "") }
     var name by remember(initial) { mutableStateOf(initial?.name ?: "") }
-    var image by remember(initial) { mutableStateOf(initial?.image ?: imageChoices.keys.first()) }
+    var image by remember(initial) { mutableStateOf(initial?.image ?: "") }
     var price by remember(initial) { mutableStateOf(initial?.price?.toString() ?: "") }
     var serviceMinutes by remember(initial) { mutableStateOf(initial?.serviceMinutes?.toString() ?: "") }
     var categoryCode by remember(initial) { mutableStateOf(initial?.categoryCode ?: categories.firstOrNull()?.code.orEmpty()) }
@@ -835,7 +821,7 @@ private fun BieuMauMonAn(initial: Dish?, categories: List<FoodCategory>, onDismi
                 OThongTin("Mã món", code, { code = it }, readOnly = initial != null)
                 OThongTin("Tên món", name, { name = it })
 
-                // Phần chọn / tải ảnh
+                // Phần tải ảnh từ máy
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = Color(0xFFF8F9FA),
@@ -843,31 +829,51 @@ private fun BieuMauMonAn(initial: Dish?, categories: List<FoodCategory>, onDismi
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
-                        modifier = Modifier.padding(8.dp),
+                        modifier = Modifier.padding(10.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        AnhMon(
-                            image,
-                            Modifier
-                                .size(74.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                        )
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        if (image.isNotEmpty()) {
+                            AnhMon(
+                                image,
+                                Modifier
+                                    .size(76.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(76.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(0xFFE2E8F0)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text("📷", fontSize = 22.sp)
+                                    Text("Chưa có ảnh", fontSize = 10.sp, color = Color(0xFF64748B))
+                                }
+                            }
+                        }
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Button(
                                 onClick = { picker.launch("image/*") },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
                                 shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("📁 Tải ảnh từ máy", fontSize = 12.sp, color = Color.White)
+                                Text(
+                                    if (image.isEmpty()) "📁 Tải ảnh từ máy" else "📁 Đổi ảnh khác",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White
+                                )
                             }
-                            OChon(
-                                label = "Ảnh mẫu",
-                                selected = imageChoices[image] ?: "Ảnh tải lên",
-                                choices = imageChoices.map { it.key to it.value }
-                            ) { image = it }
+                            Text(
+                                if (image.isEmpty()) "Chọn ảnh món từ thư viện máy" else "Đã chọn ảnh từ máy",
+                                fontSize = 11.sp,
+                                color = if (image.isEmpty()) Color(0xFF64748B) else Color(0xFF2E7D32)
+                            )
                         }
                     }
                 }
@@ -890,8 +896,9 @@ private fun BieuMauMonAn(initial: Dish?, categories: List<FoodCategory>, onDismi
                 onClick = {
                     val parsedPrice = price.toLongOrNull()
                     val parsedMinutes = serviceMinutes.toIntOrNull()
-                    if (code.isBlank() || name.isBlank() || categoryCode.isBlank() || parsedPrice == null || parsedPrice < 0 || parsedMinutes == null || parsedMinutes <= 0) {
-                        error = "Vui lòng nhập đủ thông tin (giá >= 0, phút > 0)."
+                    if (code.isBlank() || name.isBlank() || categoryCode.isBlank() || image.isBlank() || parsedPrice == null || parsedPrice < 0 || parsedMinutes == null || parsedMinutes <= 0) {
+                        error = if (image.isBlank()) "Vui lòng tải ảnh món ăn từ máy lên."
+                                else "Vui lòng nhập đủ thông tin (giá >= 0, phút > 0)."
                     } else {
                         onSave(Dish(code.trim(), name.trim(), image, parsedPrice, parsedMinutes, categoryCode))
                     }
@@ -990,7 +997,16 @@ private fun AnhMon(image: String, modifier: Modifier) {
             return
         }
     }
-    Image(painterResource(anhMinhHoaMonAn(image)), "Ảnh món ăn", modifier, contentScale = ContentScale.Crop)
+    if (image.isNotEmpty()) {
+        Image(painterResource(anhMinhHoaMonAn(image)), "Ảnh món ăn", modifier, contentScale = ContentScale.Crop)
+    } else {
+        Box(
+            modifier = modifier.background(Color(0xFFE2E8F0)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("📷", fontSize = 24.sp)
+        }
+    }
 }
 
 private fun luuAnhTuMay(context: Context, uri: Uri): String? = try {

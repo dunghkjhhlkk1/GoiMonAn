@@ -10,7 +10,7 @@ Mở thư mục dự án bằng Android Studio, chọn AVD rồi chạy cấu h�
 ## Chức năng
 
 - Tab **Loại món**: xem, thêm, sửa, xóa loại món gồm mã loại, tên loại, mô tả. Khi xóa một loại, hộp thoại báo số món liên quan; các món này được xóa cùng loại sau khi xác nhận.
-- Tab **Món ăn**: xem, thêm, sửa, xóa món gồm mã món, tên món, hình ảnh (có thể chọn ảnh mẫu sắc nét hoặc bấm **Tải ảnh từ máy** để chọn ảnh từ thư viện), giá đặt, thời gian phục vụ, loại món.
+- Tab **Món ăn**: xem, thêm, sửa, xóa món gồm mã món, tên món, hình ảnh (tải ảnh trực tiếp từ bộ nhớ máy lên), giá đặt, thời gian phục vụ, loại món.
 - Chọn một loại ở hàng bộ lọc loại món hoặc bấm **Xem món thuộc loại** để xem các món ăn theo từng danh mục.
 - **Bộ lọc nâng cao gọn gàng**:
   - Lọc theo **Giá** độc lập: Tất cả, Dưới 100k, 100k–200k, Trên 200k.
