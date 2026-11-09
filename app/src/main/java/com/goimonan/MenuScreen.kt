@@ -38,8 +38,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.io.File
 
+// =========================================================================================
+// PHẦN 1: CÁC HẰNG SỐ, DANH SÁCH MẪU VÀ DỮ LIỆU CẤU HÌNH BỘ LỌC
+// =========================================================================================
+
+/** Thông tin sinh viên thực hiện đồ án / bài tập */
 private const val STUDENT = "K24DTCN008 - Đào Xuân Dũng"
 
+/**
+ * Danh mục ảnh mẫu có sẵn trong thư mục drawable của dự án.
+ * Key: tên định danh lưu trong database (ví dụ "dish_pho")
+ * Value: tên hiển thị tiếng Việt trên giao diện chọn ảnh mẫu
+ */
 private val imageChoices = linkedMapOf(
     "dish_pho" to "Phở bò",
     "dish_bun_bo" to "Bún bò Huế",
@@ -54,8 +64,15 @@ private val imageChoices = linkedMapOf(
     "dish_sinh_to_xoai" to "Sinh tố xoài"
 )
 
+/**
+ * Class định nghĩa một khoảng giá trị dùng cho bộ lọc (Giá tiền hoặc Thời gian).
+ * @param label Tên nhãn hiển thị trên nút chọn lọc (ví dụ: "Dưới 100k", "10–15 phút")
+ * @param from Giá trị bắt đầu (null nếu không có giới hạn dưới)
+ * @param to Giá trị kết thúc (null nếu không có giới hạn trên)
+ */
 private class Range(val label: String, val from: Long?, val to: Long?)
 
+/** Danh sách các khoảng lọc theo Giá tiền (VNĐ) */
 private val priceRanges = listOf(
     Range("Tất cả giá", null, null),
     Range("Dưới 100k", null, 99_999),
@@ -63,6 +80,7 @@ private val priceRanges = listOf(
     Range("Trên 200k", 200_001, null)
 )
 
+/** Danh sách các khoảng lọc theo Thời gian chế biến / phục vụ (phút) */
 private val timeRanges = listOf(
     Range("Mọi thời gian", null, null),
     Range("Dưới 10 phút", null, 9),
@@ -70,39 +88,70 @@ private val timeRanges = listOf(
     Range("Trên 15 phút", 16, null)
 )
 
+// =========================================================================================
+// PHẦN 2: MÀN HÌNH CHÍNH QUẢN LÝ THỰC ĐƠN (ManHinhQuanLyThucDon)
+// =========================================================================================
+
+/**
+ * Composable chính của ứng dụng Gọi Món Ăn:
+ * - Điều phối hiển thị 2 Tab: "Món ăn" (tab 0) và "Loại món" (tab 1).
+ * - Quản lý state tìm kiếm, bộ lọc danh mục, bộ lọc khoảng giá, bộ lọc thời gian.
+ * - Quản lý các hộp thoại (Dialogs) Thêm/Sửa/Xóa Món ăn và Loại món.
+ * - Tương tác trực tiếp với MenuDatabase thông qua SQLite.
+ *
+ * @param database Thể hiện của lớp MenuDatabase để truy vấn và cập nhật dữ liệu SQLite
+ */
 @Composable
 fun ManHinhQuanLyThucDon(database: MenuDatabase) {
     val context = LocalContext.current
-    var tab by remember { mutableIntStateOf(0) }
-    var refresh by remember { mutableIntStateOf(0) }
-    var search by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf<String?>(null) }
-    var priceFilter by remember { mutableIntStateOf(0) }
-    var timeFilter by remember { mutableIntStateOf(0) }
 
-    var editingDish by remember { mutableStateOf<Dish?>(null) }
-    var showDishForm by remember { mutableStateOf(false) }
-    var deletingDish by remember { mutableStateOf<Dish?>(null) }
-    var editingCategory by remember { mutableStateOf<FoodCategory?>(null) }
-    var showCategoryForm by remember { mutableStateOf(false) }
-    var deletingCategory by remember { mutableStateOf<FoodCategory?>(null) }
+    // --- State điều hướng và bộ lọc ---
+    var tab by remember { mutableIntStateOf(0) }                      // Tab hiện tại: 0 = Món ăn, 1 = Loại món
+    var refresh by remember { mutableIntStateOf(0) }                  // Biến đếm làm mới: tăng lên mỗi khi thêm/sửa/xóa để trigger đọc lại database
+    var search by remember { mutableStateOf("") }                     // Từ khóa tìm kiếm (theo tên hoặc mã món)
+    var selectedCategory by remember { mutableStateOf<String?>(null) } // Mã loại món đang được chọn để lọc (null = tất cả)
+    var priceFilter by remember { mutableIntStateOf(0) }              // Index khoảng giá đang chọn trong danh sách priceRanges
+    var timeFilter by remember { mutableIntStateOf(0) }               // Index khoảng thời gian đang chọn trong danh sách timeRanges
 
+    // --- State quản lý các Dialog Thêm/Sửa/Xóa Món ăn ---
+    var editingDish by remember { mutableStateOf<Dish?>(null) }       // Món ăn đang được sửa (null nếu là thêm mới)
+    var showDishForm by remember { mutableStateOf(false) }            // Trạng thái bật/tắt Dialog form món ăn
+    var deletingDish by remember { mutableStateOf<Dish?>(null) }      // Món ăn đang chờ xác nhận xóa trong AlertDialog
+
+    // --- State quản lý các Dialog Thêm/Sửa/Xóa Loại món ---
+    var editingCategory by remember { mutableStateOf<FoodCategory?>(null) } // Loại món đang được sửa (null nếu là thêm mới)
+    var showCategoryForm by remember { mutableStateOf(false) }              // Trạng thái bật/tắt Dialog form loại món
+    var deletingCategory by remember { mutableStateOf<FoodCategory?>(null) } // Loại món đang chờ xác nhận xóa
+
+    // --- Truy vấn dữ liệu từ SQLite (tự động tính toán lại khi dependency thay đổi) ---
+    // Danh sách tất cả loại món (lấy lại khi 'refresh' tăng)
     val categories = remember(refresh) { database.LayLoaiMonAn() }
+
+    // Danh sách món ăn được lọc đa tiêu chí: theo loại, từ khóa tìm kiếm, khoảng giá, khoảng thời gian
     val dishes = remember(selectedCategory, search, priceFilter, timeFilter, refresh) {
         val gia = priceRanges[priceFilter]
         val phut = timeRanges[timeFilter]
         database.TimMonAn(search.trim(), selectedCategory, gia.from, gia.to, phut.from?.toInt(), phut.to?.toInt())
     }
+
+    // State điều khiển vị trí cuộn của danh sách món ăn
     val dishListState = rememberLazyListState()
+
+    // Mỗi khi thay đổi tiêu chí lọc hoặc tìm kiếm, tự động cuộn danh sách lên đầu trang
     LaunchedEffect(selectedCategory, search, priceFilter, timeFilter) {
         dishListState.scrollToItem(0)
     }
+
+    // Map tra cứu nhanh: từ mã loại món -> tên loại món (để hiển thị tên loại trên thẻ món ăn)
     val categoryNames = categories.associate { it.code to it.name }
+
+    // Kiểm tra xem người dùng có đang áp dụng bất kỳ bộ lọc/tìm kiếm nào hay không
     val isFiltering = search.isNotBlank() || selectedCategory != null || priceFilter != 0 || timeFilter != 0
 
     Scaffold(
-        containerColor = Color(0xFFF8F9FA),
+        containerColor = Color(0xFFF8F9FA), // Màu nền tổng thể sáng nhẹ dịu mắt
         floatingActionButton = {
+            // Nút bấm nổi (+) góc dưới: Tùy theo tab đang đứng sẽ mở form thêm món hoặc thêm loại món
             ExtendedFloatingActionButton(
                 onClick = {
                     if (tab == 0 && categories.isNotEmpty()) {
@@ -114,7 +163,7 @@ fun ManHinhQuanLyThucDon(database: MenuDatabase) {
                         showCategoryForm = true
                     }
                 },
-                containerColor = Color(0xFFE65100),
+                containerColor = Color(0xFFE65100), // Màu cam đậm chủ đạo
                 contentColor = Color.White,
                 shape = RoundedCornerShape(16.dp),
                 elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp),
@@ -129,7 +178,9 @@ fun ManHinhQuanLyThucDon(database: MenuDatabase) {
                 .padding(padding)
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            // Header Banner
+            // ---------------------------------------------------------
+            // 1. BANNER TIÊU ĐỀ ĐẦU TRANG (Header Gradient)
+            // ---------------------------------------------------------
             Box(
                 Modifier
                     .fillMaxWidth()
@@ -169,7 +220,9 @@ fun ManHinhQuanLyThucDon(database: MenuDatabase) {
 
             Spacer(Modifier.height(10.dp))
 
-            // Tab Row hiện đại
+            // ---------------------------------------------------------
+            // 2. THANH CHUYỂN TAB HIỆN ĐẠI (Món ăn / Loại món)
+            // ---------------------------------------------------------
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(14.dp),
@@ -177,6 +230,8 @@ fun ManHinhQuanLyThucDon(database: MenuDatabase) {
             ) {
                 Row(Modifier.padding(4.dp)) {
                     val tabModifier = Modifier.weight(1f)
+
+                    // Tab 0: Danh sách món ăn
                     Surface(
                         modifier = tabModifier.clickable { tab = 0 },
                         shape = RoundedCornerShape(10.dp),
@@ -192,6 +247,8 @@ fun ManHinhQuanLyThucDon(database: MenuDatabase) {
                             )
                         }
                     }
+
+                    // Tab 1: Danh sách loại món
                     Surface(
                         modifier = tabModifier.clickable { tab = 1 },
                         shape = RoundedCornerShape(10.dp),
@@ -212,8 +269,13 @@ fun ManHinhQuanLyThucDon(database: MenuDatabase) {
 
             Spacer(Modifier.height(10.dp))
 
+            // ---------------------------------------------------------
+            // 3. NỘI DUNG CHÍNH THEO TỪNG TAB
+            // ---------------------------------------------------------
             if (tab == 0) {
-                // Thanh tìm kiếm gọn gàng
+                // ==================== TAB 0: QUẢN LÝ MÓN ĂN ====================
+
+                // Ô tìm kiếm nhanh theo tên hoặc mã món
                 OutlinedTextField(
                     value = search,
                     onValueChange = { search = it },
@@ -228,6 +290,7 @@ fun ManHinhQuanLyThucDon(database: MenuDatabase) {
                     singleLine = true,
                     placeholder = { Text("🔍 Tìm tên hoặc mã món...", fontSize = 13.sp, color = Color(0xFF9E9E9E)) },
                     trailingIcon = {
+                        // Nút 'X' để xóa nhanh nội dung tìm kiếm
                         if (search.isNotEmpty()) {
                             IconButton(onClick = { search = "" }) {
                                 Text("✕", fontWeight = FontWeight.Bold, color = Color(0xFF757575))
@@ -238,7 +301,7 @@ fun ManHinhQuanLyThucDon(database: MenuDatabase) {
 
                 Spacer(Modifier.height(8.dp))
 
-                // Dòng loại món (cuộn ngang)
+                // Thanh cuộn ngang chọn loại món (Pill lọc nhanh)
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -262,7 +325,7 @@ fun ManHinhQuanLyThucDon(database: MenuDatabase) {
 
                 Spacer(Modifier.height(6.dp))
 
-                // BỘ LỌC NÂNG CAO GỌN GÀNG (1 dòng duy nhất với Dropdown)
+                // Thanh bộ lọc nâng cao (Dropdown lọc theo Giá tiền và Thời gian chế biến)
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -270,7 +333,7 @@ fun ManHinhQuanLyThucDon(database: MenuDatabase) {
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Menu chọn giá
+                    // Menu chọn khoảng giá
                     DropdownFilterPill(
                         prefix = "💰 Giá",
                         label = priceRanges[priceFilter].label,
@@ -279,7 +342,7 @@ fun ManHinhQuanLyThucDon(database: MenuDatabase) {
                         onSelect = { priceFilter = it }
                     )
 
-                    // Menu chọn thời gian
+                    // Menu chọn khoảng thời gian
                     DropdownFilterPill(
                         prefix = "⏱️ Thời gian",
                         label = timeRanges[timeFilter].label,
@@ -288,7 +351,7 @@ fun ManHinhQuanLyThucDon(database: MenuDatabase) {
                         onSelect = { timeFilter = it }
                     )
 
-                    // Nút Xóa tất cả bộ lọc khi đang lọc
+                    // Nút Xóa tất cả bộ lọc khi đang có điều kiện lọc
                     if (isFiltering) {
                         Surface(
                             shape = RoundedCornerShape(10.dp),
@@ -314,8 +377,9 @@ fun ManHinhQuanLyThucDon(database: MenuDatabase) {
 
                 Spacer(Modifier.height(8.dp))
 
-                // Danh sách món ăn
+                // Danh sách các thẻ món ăn (LazyColumn)
                 if (dishes.isEmpty()) {
+                    // Giao diện khi không có kết quả phù hợp
                     Box(
                         Modifier
                             .fillMaxWidth()
@@ -333,11 +397,12 @@ fun ManHinhQuanLyThucDon(database: MenuDatabase) {
                         }
                     }
                 } else {
+                    // Danh sách món ăn cuộn mượt mà
                     LazyColumn(
                         state = dishListState,
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
-                        contentPadding = PaddingValues(bottom = 80.dp)
+                        contentPadding = PaddingValues(bottom = 80.dp) // Chừa khoảng trống bên dưới tránh bị nút FAB che khuất
                     ) {
                         items(dishes, key = { it.code }) { dish ->
                             TheMonAn(
@@ -350,7 +415,7 @@ fun ManHinhQuanLyThucDon(database: MenuDatabase) {
                     }
                 }
             } else {
-                // Tab Loại món
+                // ==================== TAB 1: QUẢN LÝ LOẠI MÓN ====================
                 Spacer(Modifier.height(4.dp))
                 if (categories.isEmpty()) {
                     Box(
@@ -381,7 +446,11 @@ fun ManHinhQuanLyThucDon(database: MenuDatabase) {
         }
     }
 
-    // Dialogs
+    // ---------------------------------------------------------
+    // 4. CÁC HỘP THOẠI DIALOGS (Form & Xác nhận xóa)
+    // ---------------------------------------------------------
+
+    // Dialog Biểu mẫu Thêm/Sửa Món ăn
     if (showDishForm) {
         BieuMauMonAn(
             initial = editingDish,
@@ -390,12 +459,14 @@ fun ManHinhQuanLyThucDon(database: MenuDatabase) {
             onSave = { dish ->
                 try {
                     if (editingDish == null) {
+                        // Thêm mới: kiểm tra xem mã món đã bị trùng chưa
                         if (database.MaMonAnDaTonTai(dish.code)) throw IllegalArgumentException("Mã món đã tồn tại!")
                         database.ThemMonAn(dish)
                     } else {
+                        // Cập nhật món đã có
                         database.SuaMonAn(dish)
                     }
-                    refresh++
+                    refresh++ // Làm mới danh sách
                     showDishForm = false
                     Toast.makeText(context, "Đã lưu món ${dish.name}", Toast.LENGTH_SHORT).show()
                 } catch (error: Exception) {
@@ -405,6 +476,7 @@ fun ManHinhQuanLyThucDon(database: MenuDatabase) {
         )
     }
 
+    // Dialog Biểu mẫu Thêm/Sửa Loại món
     if (showCategoryForm) {
         BieuMauLoaiMonAn(
             initial = editingCategory,
@@ -412,12 +484,14 @@ fun ManHinhQuanLyThucDon(database: MenuDatabase) {
             onSave = { category ->
                 try {
                     if (editingCategory == null) {
+                        // Thêm mới: kiểm tra mã loại món đã tồn tại chưa
                         if (database.MaLoaiMonDaTonTai(category.code)) throw IllegalArgumentException("Mã loại đã tồn tại!")
                         database.ThemLoaiMonAn(category)
                     } else {
+                        // Cập nhật loại món đã có
                         database.SuaLoaiMonAn(category)
                     }
-                    refresh++
+                    refresh++ // Làm mới danh sách
                     showCategoryForm = false
                     Toast.makeText(context, "Đã lưu loại ${category.name}", Toast.LENGTH_SHORT).show()
                 } catch (error: Exception) {
@@ -427,6 +501,7 @@ fun ManHinhQuanLyThucDon(database: MenuDatabase) {
         )
     }
 
+    // Hộp thoại xác nhận xóa một món ăn
     deletingDish?.let { dish ->
         AlertDialog(
             onDismissRequest = { deletingDish = null },
@@ -450,6 +525,7 @@ fun ManHinhQuanLyThucDon(database: MenuDatabase) {
         )
     }
 
+    // Hộp thoại xác nhận xóa loại món ăn (kèm thông báo số lượng món ăn liên đới bị xóa theo CASCADE)
     deletingCategory?.let { category ->
         val affectedDishes = database.LayMonAn(category.code).size
         AlertDialog(
@@ -480,8 +556,21 @@ fun ManHinhQuanLyThucDon(database: MenuDatabase) {
     }
 }
 
-// =================== CÁC THẺ GIAO DIỆN HIỆN ĐẠI ===================
+// =========================================================================================
+// PHẦN 3: CÁC THẺ GIAO DIỆN HIỂN THỊ ITEM (Cards)
+// =========================================================================================
 
+/**
+ * Thẻ hiển thị thông tin 1 món ăn trong danh sách:
+ * - Ảnh đại diện món ăn bên trái (hỗ trợ cả ảnh nội bộ lẫn ảnh tải lên từ bộ nhớ máy)
+ * - Tên món, Mã món + Tên loại món, Thời gian chế biến, Giá tiền (được format dấu phẩy)
+ * - Các nút thao tác nhanh: Sửa và Xóa
+ *
+ * @param dish Đối tượng Dish chứa thông tin món ăn
+ * @param categoryName Tên hiển thị của danh mục loại món
+ * @param onEdit Callback được gọi khi bấm nút Sửa
+ * @param onDelete Callback được gọi khi bấm nút Xóa
+ */
 @Composable
 private fun TheMonAn(dish: Dish, categoryName: String, onEdit: () -> Unit, onDelete: () -> Unit) {
     Card(
@@ -497,6 +586,7 @@ private fun TheMonAn(dish: Dish, categoryName: String, onEdit: () -> Unit, onDel
                 .padding(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Ảnh món ăn bo tròn góc
             AnhMon(
                 dish.image,
                 Modifier
@@ -504,6 +594,8 @@ private fun TheMonAn(dish: Dish, categoryName: String, onEdit: () -> Unit, onDel
                     .clip(RoundedCornerShape(12.dp))
             )
             Spacer(Modifier.width(12.dp))
+
+            // Cột thông tin chi tiết món ăn
             Column(Modifier.weight(1f)) {
                 Text(
                     dish.name,
@@ -539,6 +631,7 @@ private fun TheMonAn(dish: Dish, categoryName: String, onEdit: () -> Unit, onDel
                 )
             }
 
+            // Cột các nút thao tác Sửa / Xóa
             Column(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -576,6 +669,18 @@ private fun TheMonAn(dish: Dish, categoryName: String, onEdit: () -> Unit, onDel
     }
 }
 
+/**
+ * Thẻ hiển thị thông tin 1 loại danh mục món ăn:
+ * - Tiêu đề tên loại, Mã loại dạng badge nổi bật
+ * - Mô tả danh mục
+ * - Nút "Xem món thuộc loại này →" để chuyển nhanh sang tab món ăn và tự động lọc loại đó
+ * - Nút Sửa và Xóa loại món
+ *
+ * @param category Đối tượng FoodCategory
+ * @param onEdit Callback khi bấm Sửa loại
+ * @param onDelete Callback khi bấm Xóa loại
+ * @param onShowDishes Callback khi bấm "Xem món thuộc loại này"
+ */
 @Composable
 private fun TheLoaiMonAn(category: FoodCategory, onEdit: () -> Unit, onDelete: () -> Unit, onShowDishes: () -> Unit) {
     Card(
@@ -675,8 +780,15 @@ private fun TheLoaiMonAn(category: FoodCategory, onEdit: () -> Unit, onDelete: (
     }
 }
 
-// =================== CÁC THÀNH PHẦN BỘ LỌC ===================
+// =========================================================================================
+// PHẦN 4: CÁC THÀNH PHẦN NÚT BẤM VÀ BỘ LỌC (Pills & Dropdowns)
+// =========================================================================================
 
+/**
+ * Nút lọc danh mục hình con nhộng (Pill):
+ * - Đổi màu cam đậm nổi bật khi được chọn (isSelected = true)
+ * - Màu trắng viền xám khi không chọn
+ */
 @Composable
 private fun PillLoaiMon(text: String, isSelected: Boolean, onClick: () -> Unit) {
     Surface(
@@ -696,6 +808,17 @@ private fun PillLoaiMon(text: String, isSelected: Boolean, onClick: () -> Unit) 
     }
 }
 
+/**
+ * Nút bộ lọc dạng dropdown xổ xuống:
+ * - Khi bấm vào sẽ bung danh sách các tùy chọn (ví dụ: các mức giá hoặc thời gian)
+ * - Khi đang áp dụng lọc (isActive = true), nút sẽ đổi màu nền cam nhạt để người dùng nhận biết
+ *
+ * @param prefix Tiền tố tiêu đề (ví dụ "💰 Giá" hoặc "⏱️ Thời gian")
+ * @param label Tên tùy chọn hiện đang chọn (ví dụ "Dưới 100k")
+ * @param isActive Trạng thái có đang lọc khác mặc định hay không
+ * @param options Danh sách các cặp (Index, Tên hiển thị)
+ * @param onSelect Callback trả về Index được chọn
+ */
 @Composable
 private fun DropdownFilterPill(
     prefix: String,
@@ -752,8 +875,20 @@ private fun DropdownFilterPill(
     }
 }
 
-// =================== BIỂU MẪU NHẬP LIỆU ===================
+// =========================================================================================
+// PHẦN 5: BIỂU MẪU NHẬP LIỆU (DIALOG FORMS)
+// =========================================================================================
 
+/**
+ * Hộp thoại (Dialog) nhập liệu Loại món ăn:
+ * - Thêm mới hoặc chỉnh sửa (nếu initial != null)
+ * - Khóa trường Mã loại khi ở chế độ chỉnh sửa (vì mã là Khóa chính không được đổi)
+ * - Kiểm tra hợp lệ các trường bắt buộc trước khi lưu
+ *
+ * @param initial Đối tượng FoodCategory hiện tại nếu là sửa, hoặc null nếu là thêm mới
+ * @param onDismiss Đóng dialog khi hủy hoặc nhấn ra ngoài
+ * @param onSave Callback lưu đối tượng FoodCategory sau khi validate thành công
+ */
 @Composable
 private fun BieuMauLoaiMonAn(initial: FoodCategory?, onDismiss: () -> Unit, onSave: (FoodCategory) -> Unit) {
     var code by remember(initial) { mutableStateOf(initial?.code ?: "") }
@@ -797,6 +932,17 @@ private fun BieuMauLoaiMonAn(initial: FoodCategory?, onDismiss: () -> Unit, onSa
     )
 }
 
+/**
+ * Hộp thoại (Dialog) nhập liệu Món ăn:
+ * - Hỗ trợ cả Thêm món mới và Sửa món ăn hiện có.
+ * - Cho phép chọn ảnh mẫu có sẵn HOẶC tải ảnh tùy ý từ bộ nhớ máy (Activity Result Launcher).
+ * - Kiểm tra đầy đủ: Giá tiền >= 0, Thời gian chế biến > 0, không để trống mã/tên/loại.
+ *
+ * @param initial Đối tượng Dish hiện tại nếu là sửa, hoặc null nếu là thêm mới
+ * @param categories Danh sách tất cả loại món hiện có để người dùng chọn danh mục
+ * @param onDismiss Đóng dialog
+ * @param onSave Callback lưu đối tượng Dish
+ */
 @Composable
 private fun BieuMauMonAn(initial: Dish?, categories: List<FoodCategory>, onDismiss: () -> Unit, onSave: (Dish) -> Unit) {
     var code by remember(initial) { mutableStateOf(initial?.code ?: "") }
@@ -808,6 +954,7 @@ private fun BieuMauMonAn(initial: Dish?, categories: List<FoodCategory>, onDismi
     var error by remember(initial) { mutableStateOf("") }
     val context = LocalContext.current
 
+    // Launcher mở trình chọn file ảnh hệ thống của Android
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
             val saved = luuAnhTuMay(context, uri)
@@ -835,7 +982,7 @@ private fun BieuMauMonAn(initial: Dish?, categories: List<FoodCategory>, onDismi
                 OThongTin("Mã món", code, { code = it }, readOnly = initial != null)
                 OThongTin("Tên món", name, { name = it })
 
-                // Phần chọn / tải ảnh
+                // Khung chọn ảnh hoặc tải ảnh từ máy
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = Color(0xFFF8F9FA),
@@ -847,6 +994,7 @@ private fun BieuMauMonAn(initial: Dish?, categories: List<FoodCategory>, onDismi
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
+                        // Xem trước ảnh được chọn
                         AnhMon(
                             image,
                             Modifier
@@ -854,6 +1002,7 @@ private fun BieuMauMonAn(initial: Dish?, categories: List<FoodCategory>, onDismi
                                 .clip(RoundedCornerShape(10.dp))
                         )
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            // Nút mở thư viện ảnh máy
                             Button(
                                 onClick = { picker.launch("image/*") },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
@@ -863,6 +1012,7 @@ private fun BieuMauMonAn(initial: Dish?, categories: List<FoodCategory>, onDismi
                             ) {
                                 Text("📁 Tải ảnh từ máy", fontSize = 12.sp, color = Color.White)
                             }
+                            // Dropdown chọn ảnh mẫu có sẵn
                             OChon(
                                 label = "Ảnh mẫu",
                                 selected = imageChoices[image] ?: "Ảnh tải lên",
@@ -906,6 +1056,14 @@ private fun BieuMauMonAn(initial: Dish?, categories: List<FoodCategory>, onDismi
     )
 }
 
+// =========================================================================================
+// PHẦN 6: CÁC THÀNH PHẦN VIEW TÁI SỬ DỤNG (REUSABLE UI COMPONENTS)
+// =========================================================================================
+
+/**
+ * Ô nhập liệu OutlinedTextField chuẩn hóa:
+ * Có nhãn label, hỗ trợ chế độ chỉ đọc (readOnly) và kiểu bàn phím (KeyboardType).
+ */
 @Composable
 private fun OThongTin(
     label: String,
@@ -930,6 +1088,10 @@ private fun OThongTin(
     )
 }
 
+/**
+ * Nút chọn Dropdown chuẩn hóa:
+ * Hiển thị giá trị đang chọn và danh sách sổ xuống khi nhấn vào.
+ */
 @Composable
 private fun OChon(
     label: String,
@@ -964,8 +1126,14 @@ private fun OChon(
     }
 }
 
-// =================== XỬ LÝ ẢNH ===================
+// =========================================================================================
+// PHẦN 7: XỬ LÝ HÌNH ẢNH (ẢNH RESOURCE VÀ ẢNH TẢI TỪ MÁY)
+// =========================================================================================
 
+/**
+ * Ánh xạ tên định danh chuỗi sang ID tài nguyên Drawable tương ứng trong file res/drawable.
+ * Nếu không tìm thấy sẽ trả về ảnh mặc định phở bò.
+ */
 private fun anhMinhHoaMonAn(image: String): Int = when (image) {
     "dish_pho" -> R.drawable.dish_pho_new
     "dish_bun_bo" -> R.drawable.dish_bun_bo_new
@@ -981,6 +1149,11 @@ private fun anhMinhHoaMonAn(image: String): Int = when (image) {
     else -> R.drawable.dish_pho_new
 }
 
+/**
+ * Composable hiển thị ảnh món ăn:
+ * - Nếu chuỗi ảnh bắt đầu bằng "file:": giải mã Bitmap từ file lưu trong bộ nhớ máy (ảnh tải lên).
+ * - Nếu là tên định danh ảnh mẫu: tải qua painterResource lấy từ drawable.
+ */
 @Composable
 private fun AnhMon(image: String, modifier: Modifier) {
     if (image.startsWith("file:")) {
@@ -993,6 +1166,17 @@ private fun AnhMon(image: String, modifier: Modifier) {
     Image(painterResource(anhMinhHoaMonAn(image)), "Ảnh món ăn", modifier, contentScale = ContentScale.Crop)
 }
 
+/**
+ * Lưu file ảnh do người dùng chọn từ thiết bị vào thư mục bộ nhớ riêng của ứng dụng (context.filesDir):
+ * - Đọc kích thước ảnh trước (inJustDecodeBounds = true) để tránh tràn bộ nhớ RAM (OOM).
+ * - Tính toán inSampleSize để downscale ảnh nếu chiều rộng hoặc chiều cao > 1024px.
+ * - Nén ảnh sang định dạng JPEG chất lượng 88% và lưu vào file cục bộ.
+ * - Trả về đường dẫn chuỗi có tiền tố "file:/..." để lưu vào database SQLite.
+ *
+ * @param context Context ứng dụng
+ * @param uri Đường dẫn Uri của file ảnh được chọn
+ * @return Chuỗi đường dẫn file có dạng "file:/path/to/dish_*.jpg", hoặc null nếu xảy ra lỗi
+ */
 private fun luuAnhTuMay(context: Context, uri: Uri): String? = try {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
