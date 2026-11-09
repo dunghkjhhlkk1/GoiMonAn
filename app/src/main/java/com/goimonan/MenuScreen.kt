@@ -33,6 +33,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -933,7 +934,10 @@ private fun OThongTin(
             focusedBorderColor = Color(0xFFE65100),
             unfocusedBorderColor = Color(0xFFD6D6D6)
         ),
-        keyboardOptions = KeyboardOptions(keyboardType = keyboard)
+        keyboardOptions = KeyboardOptions(
+            keyboardType = keyboard,
+            capitalization = if (keyboard == KeyboardType.Text) KeyboardCapitalization.Sentences else KeyboardCapitalization.None
+        )
     )
 }
 
